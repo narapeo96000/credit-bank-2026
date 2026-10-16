@@ -10,6 +10,9 @@ const swal = Swal;
 
 let useFetch = true;
 
+const FIELDS = ['cer_id', 'fname', 'position', 'school', 'dept'];
+let ALL = null;          // แคชรายชื่อทั้งหมด (กรองฝั่งเบราว์เซอร์)
+
 /* ============================ API client ============================ */
 
 function buildUrl(action, params) {
@@ -80,33 +83,82 @@ function saveBase64Pdf(b64, fileName) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-/* ============================ ค้นหา ============================ */
+/* ============================ ค้นหา / กรองทันที ============================ */
 
-$('searchForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const q = $('q').value.trim();
-  if (!q) {
-    swal.fire({ icon: 'info', title: 'กรุณากรอกคำค้นหา', text: 'พิมพ์ชื่อ-สกุล หรือรหัสผู้ผ่านการอบรม' });
-    $('q').focus();
+const norm = (v) => String(v == null ? '' : v).toLowerCase().replace(/\s+/g, '').trim();
+
+const localHits = (q) => {
+  const key = norm(q);
+  if (!key) return ALL;
+  return ALL.filter((r) => FIELDS.some((f) => norm(r[f]).indexOf(key) !== -1));
+};
+
+/** กรองทันทีจากข้อมูลที่โหลดไว้ ถ้ายังไม่มีให้ยิง API แทน */
+function applyFilter(q) {
+  const query = String(q || '').trim();
+  $('btnClear').hidden = !query;
+
+  if (!ALL) return remoteSearch(query);
+
+  if (!query) {
+    renderAll();
     return;
   }
-  $('btnSearch').disabled = true;
-  swal.fire({ title: 'กำลังค้นหารายชื่อ...', allowOutsideClick: false, didOpen: () => swal.showLoading() });
+  const hits = localHits(query);
+  render(
+    { ok: true, total: ALL.length, count: hits.length, results: hits },
+    { title: 'ผลการค้นหา “' + query + '”', count: hits.length + ' จาก ' + ALL.length + ' ราย', showAll: true }
+  );
+}
+
+async function remoteSearch(query) {
+  if (!query) return;
   try {
-    const res = await api('search', { q });
-    swal.close();
+    const res = await api('search', { q: query });
     if (!res || !res.ok) throw new Error(res ? res.message : 'ไม่สามารถค้นหาได้');
     $('stats').textContent = 'ฐานข้อมูลทั้งหมด ' + res.total + ' ราย';
     render(res, {
-      title: 'ผลการค้นหา “' + q + '”',
+      title: 'ผลการค้นหา “' + query + '”',
       count: res.count + ' จาก ' + res.total + ' ราย',
       showAll: true
     });
   } catch (err) {
     swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message });
-  } finally {
-    $('btnSearch').disabled = false;
   }
+}
+
+/* พิมพ์แล้วกรองทันที (debounce 180ms) */
+let typing;
+$('q').addEventListener('input', () => {
+  clearTimeout(typing);
+  const v = $('q').value;
+  typing = setTimeout(() => applyFilter(v), 180);
+});
+
+$('q').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    $('q').value = '';
+    applyFilter('');
+  }
+});
+
+$('btnClear').addEventListener('click', () => {
+  $('q').value = '';
+  $('q').focus();
+  applyFilter('');
+});
+
+$('searchForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  clearTimeout(typing);
+  const q = $('q').value.trim();
+  if (!q) {
+    $('q').focus();
+    applyFilter('');
+    return;
+  }
+  applyFilter(q);                       // กรองฝั่งเบราว์เซอร์ทันที
+  if (!ALL) remoteSearch(q);            // สำรอง: ยังโหลดรายชื่อไม่เสร็จ
 });
 
 /* ============================ รายชื่อทั้งหมด ============================ */
@@ -116,6 +168,7 @@ async function loadAll(silent) {
   try {
     const res = await api('list');
     if (!res || !res.ok) throw new Error(res ? res.message : 'ไม่สามารถโหลดรายชื่อได้');
+    if (res.count <= res.results.length) ALL = res.results;
     $('stats').textContent = 'ฐานข้อมูลทั้งหมด ' + res.total + ' ราย';
     render(res, { title: 'รายชื่อผู้ผ่านการอบรมทั้งหมด', count: res.count + ' ราย' });
   } catch (err) {
@@ -123,6 +176,14 @@ async function loadAll(silent) {
       '<br><button class="btn btn-view" onclick="loadAll()" style="margin-top:12px">ลองอีกครั้ง</button></div>';
     $('stats').textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ';
   }
+}
+
+function renderAll() {
+  if (!ALL) return loadAll();
+  render(
+    { ok: true, total: ALL.length, count: ALL.length, results: ALL },
+    { title: 'รายชื่อผู้ผ่านการอบรมทั้งหมด', count: ALL.length + ' ราย' }
+  );
 }
 
 function render(res, opts) {
@@ -166,7 +227,8 @@ results.addEventListener('click', (e) => {
   if (!btn) return;
   if (btn.dataset.act === 'all') {
     $('q').value = '';
-    loadAll();
+    $('btnClear').hidden = true;
+    renderAll();
     return;
   }
   const id = btn.dataset.id;
@@ -275,10 +337,10 @@ function doMail(info) {
 /* ============================ เริ่มต้น ============================ */
 
 (async function init() {
-  const prefill = new URLSearchParams(location.search).get('q');
-  if (prefill) $('q').value = prefill;
-
+  const prefill = new URLSearchParams(location.search).get('q') || '';
   await loadAll(true);
-
-  if (prefill) $('searchForm').dispatchEvent(new Event('submit'));
+  if (prefill) {
+    $('q').value = prefill;
+    applyFilter(prefill);
+  }
 })();

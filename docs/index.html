@@ -28,10 +28,13 @@
       <h2>ค้นหารายชื่อผู้ผ่านการอบรม</h2>
       <p class="sub">ค้นหาเพื่อดาวน์โหลดเกียรติบัตร (PDF) หรือส่งเกียรติบัตรทางอีเมล</p>
       <form id="searchForm">
-        <input type="text" id="q" placeholder="พิมพ์ชื่อ-สกุล หรือรหัสผู้ผ่านการอบรม..." autocomplete="off">
+        <div class="field">
+          <input type="text" id="q" placeholder="พิมพ์ชื่อ-สกุล หรือรหัสผู้ผ่านการอบรม..." autocomplete="off">
+          <button type="button" class="clear" id="btnClear" hidden aria-label="ล้างคำค้น">&times;</button>
+        </div>
         <button type="submit" class="btn-search" id="btnSearch">ค้นหา</button>
       </form>
-      <p class="hint">รองรับชื่อ-สกุล / รหัส / ตำแหน่ง / สถานศึกษา / สังกัด &nbsp;•&nbsp; <span class="stats" id="stats">กำลังเชื่อมต่อระบบ...</span></p>
+      <p class="hint">พิมพ์เพื่อกรองรายชื่อทันที (รหัส / ชื่อ-สกุล / ตำแหน่ง / สถานศึกษา / สังกัด) &nbsp;•&nbsp; <span class="stats" id="stats">กำลังเชื่อมต่อระบบ...</span></p>
     </section>
 
     <section id="results"></section>
