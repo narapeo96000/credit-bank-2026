@@ -97,7 +97,11 @@ $('searchForm').addEventListener('submit', async (e) => {
     swal.close();
     if (!res || !res.ok) throw new Error(res ? res.message : 'ไม่สามารถค้นหาได้');
     $('stats').textContent = 'ฐานข้อมูลทั้งหมด ' + res.total + ' ราย';
-    render(res);
+    render(res, {
+      title: 'ผลการค้นหา “' + q + '”',
+      count: res.count + ' จาก ' + res.total + ' ราย',
+      showAll: true
+    });
   } catch (err) {
     swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message });
   } finally {
@@ -105,14 +109,40 @@ $('searchForm').addEventListener('submit', async (e) => {
   }
 });
 
-function render(res) {
+/* ============================ รายชื่อทั้งหมด ============================ */
+
+async function loadAll(silent) {
+  if (!silent) swal.fire({ title: 'กำลังโหลดรายชื่อ...', allowOutsideClick: false, didOpen: () => swal.showLoading() });
+  try {
+    const res = await api('list');
+    if (!res || !res.ok) throw new Error(res ? res.message : 'ไม่สามารถโหลดรายชื่อได้');
+    $('stats').textContent = 'ฐานข้อมูลทั้งหมด ' + res.total + ' ราย';
+    render(res, { title: 'รายชื่อผู้ผ่านการอบรมทั้งหมด', count: res.count + ' ราย' });
+  } catch (err) {
+    results.innerHTML = '<div class="empty">แสดงรายชื่อไม่สำเร็จ<br>' + esc(err.message) +
+      '<br><button class="btn btn-view" onclick="loadAll()" style="margin-top:12px">ลองอีกครั้ง</button></div>';
+    $('stats').textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ';
+  }
+}
+
+function render(res, opts) {
+  opts = opts || {};
+  const head = opts.title
+    ? '<div class="list-head"><span>' + esc(opts.title) + '</span>' +
+      '<span class="list-count">' + esc(opts.count || (res.count + ' ราย')) + '</span>' +
+      (opts.showAll ? '<button class="btn btn-view btn-all" data-act="all">&#8635; ดูรายชื่อทั้งหมด</button>' : '') +
+      '</div>'
+    : '';
+
   if (!res.results.length) {
-    results.innerHTML = '<div class="empty">ไม่พบรายชื่อที่ตรงกับคำค้นหา<br>ลองตรวจสอบการสะกดหรือใช้คำค้นที่สั้นลง</div>';
+    results.innerHTML = head +
+      '<div class="empty">ไม่พบรายชื่อที่ตรงกับคำค้นหา<br>ลองตรวจสอบการสะกดหรือใช้คำค้นที่สั้นลง</div>';
     return;
   }
-  results.innerHTML = res.results.map((r, i) => {
+
+  results.innerHTML = head + res.results.map((r, i) => {
     const detail = [r.position, r.school, r.dept].filter(Boolean).map(esc);
-    return '<article class="cert-card" style="animation-delay:' + (i * 40) + 'ms">' +
+    return '<article class="cert-card" style="animation-delay:' + Math.min(i, 20) * 30 + 'ms">' +
       '<div class="avatar">' + esc((r.fname || '?').trim().charAt(0)) + '</div>' +
       '<div class="info">' +
         '<h3>' + esc(r.fname) + ' <span class="rid">รหัส ' + esc(r.cer_id) + '</span></h3>' +
@@ -134,6 +164,11 @@ function render(res) {
 results.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
+  if (btn.dataset.act === 'all') {
+    $('q').value = '';
+    loadAll();
+    return;
+  }
   const id = btn.dataset.id;
   if (btn.dataset.act === 'dl') doDownload(id, false);
   else if (btn.dataset.act === 'view') doPreview(id, false);
@@ -243,13 +278,7 @@ function doMail(info) {
   const prefill = new URLSearchParams(location.search).get('q');
   if (prefill) $('q').value = prefill;
 
-  try {
-    const res = await api('stats');
-    if (res && res.ok) $('stats').textContent = 'ฐานข้อมูลทั้งหมด ' + res.total + ' ราย';
-    else $('stats').textContent = '';
-  } catch (err) {
-    $('stats').textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ';
-  }
+  await loadAll(true);
 
   if (prefill) $('searchForm').dispatchEvent(new Event('submit'));
 })();

@@ -223,6 +223,53 @@ input[type=text]:focus {
   line-height: 1.7;
 }
 
+.list-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 2px 2px 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.list-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.btn-all { margin-left: auto; }
+
+#results {
+  max-height: none;
+}
+
+@media (min-width: 900px) {
+  #results {
+    max-height: 78vh;
+    overflow-y: auto;
+    padding-right: 6px;
+    scrollbar-width: thin;
+  }
+  #results::-webkit-scrollbar { width: 8px; }
+  #results::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 8px;
+  }
+  .list-head {
+    position: sticky;
+    top: 0;
+    background: #f1f5f9;
+    z-index: 2;
+    padding: 8px 2px;
+  }
+}
+
 footer {
   background: #0b3c74;
   color: #cbd5e1;

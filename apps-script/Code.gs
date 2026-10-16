@@ -39,6 +39,7 @@ const CFG = {
   KEY_FIELD: 'cer_id',
   FIELDS: ['cer_id', 'fname', 'position', 'school', 'dept'],
   MAX_RESULTS: 30,
+  LIST_LIMIT: 500,
 
   // ข้อมูลโครงการ (ใช้แทนค่าในเทมเพลต + แสดงผลหน้าเว็บ/อีเมล)
   EVENT: {
@@ -55,6 +56,7 @@ const CFG = {
 /**
  * Backend API (frontend อยู่บน GitHub Pages)
  *   GET ?api=stats
+ *   GET ?api=list&offset=0&limit=100   -> รายชื่อทั้งหมด (แสดงหน้าแรก)
  *   GET ?api=search&q=<คำค้น>
  *   GET ?api=issue&id=<รหัส>&force=1     -> { base64, fileName } (ใช้ไฟล์เดิมถ้าเคยสร้าง)
  *   GET ?api=mail&id=<รหัส>&email=...    -> ส่งเกียรติบัตรทางอีเมล
@@ -72,17 +74,19 @@ function doGet(e) {
 
 function apiHandle_(p) {
   try {
-    switch (p.api) {
+    switch (String(p.api || '')) {
       case 'stats':
         return getStats();
+      case 'list':
+        return listRoster(p.offset, p.limit);
       case 'search':
-        return searchRoster(p.q || p.query || '');
+        return searchRoster(p.q || p.query);
       case 'issue':
         return apiIssue_(p);
       case 'mail':
         return sendCertificate(p.id || p.cer_id || '', p.email || '');
       default:
-        return { ok: false, message: 'unknown api: ' + p.api };
+        return { ok: false, message: 'ไม่รู้จักคำสั่ง: ' + p.api };
     }
   } catch (err) {
     return { ok: false, message: String((err && err.message) || err) };
@@ -90,6 +94,7 @@ function apiHandle_(p) {
 }
 
 /** เปิด CORS ให้ frontend บน GitHub Pages และรองรับ JSONP */
+
 function apiOut_(payload, callback) {
   const json = JSON.stringify(payload);
   const cb = String(callback || '').replace(/[^A-Za-z0-9_$.\[\]]/g, '');
@@ -125,6 +130,29 @@ function getStats() {
   } catch (err) {
     return { ok: false, message: err.message };
   }
+}
+
+/** รายชื่อทั้งหมด เรียงตามรหัส (ใช้แสดงหน้าแรก) */
+function listRoster(offset, limit) {
+  try {
+    const rows = readRows_().sort(function (a, b) { return keyNum_(a) - keyNum_(b); });
+    const start = Math.max(0, Number(offset) || 0);
+    const max = Number(limit) > 0 ? Number(limit) : CFG.LIST_LIMIT;
+    return {
+      ok: true,
+      total: rows.length,
+      count: rows.length,
+      offset: start,
+      results: rows.slice(start, start + max).map(publicRec_)
+    };
+  } catch (err) {
+    return { ok: false, message: err.message };
+  }
+}
+
+function keyNum_(r) {
+  const digits = String(r[CFG.KEY_FIELD] || '').replace(/\D/g, '');
+  return Number(digits) || 0;
 }
 
 /** ค้นหารายชื่อจาก รหัส / ชื่อ / ตำแหน่ง / สถานศึกษา / สังกัด */
