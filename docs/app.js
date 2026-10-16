@@ -12,6 +12,7 @@ let useFetch = true;
 
 const FIELDS = ['cer_id', 'fname', 'position', 'school', 'dept'];
 let ALL = null;          // แคชรายชื่อทั้งหมด (กรองฝั่งเบราว์เซอร์)
+let busy = false;        // กันคำขอซ้ำ/คลิกซ้ำ (กันสร้าง PDF ซ้ำ)
 
 /* ============================ API client ============================ */
 
@@ -231,6 +232,7 @@ results.addEventListener('click', (e) => {
     renderAll();
     return;
   }
+  if (busy) return;                      // กันกดซ้ำ/คลิกหลายครั้งพร้อมกัน (กันสร้าง PDF ซ้ำ)
   const id = btn.dataset.id;
   if (btn.dataset.act === 'dl') doDownload(id, false);
   else if (btn.dataset.act === 'view') doPreview(id, false);
@@ -241,6 +243,8 @@ results.addEventListener('click', (e) => {
 /* ============================ PDF ============================ */
 
 async function doDownload(cerId, force) {
+  if (busy) return;
+  busy = true;
   swal.fire({
     title: force ? 'กำลังสร้างเกียรติบัตรใหม่...' : 'กำลังเตรียมไฟล์เกียรติบัตร...',
     allowOutsideClick: false,
@@ -260,10 +264,14 @@ async function doDownload(cerId, force) {
     });
   } catch (err) {
     swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message });
+  } finally {
+    busy = false;
   }
 }
 
 async function doPreview(cerId, force) {
+  if (busy) return;
+  busy = true;
   swal.fire({ title: 'กำลังเตรียมไฟล์เกียรติบัตร...', allowOutsideClick: false, didOpen: () => swal.showLoading() });
   try {
     const res = await api('issue', { id: cerId, force: force ? '1' : '0' });
@@ -274,6 +282,8 @@ async function doPreview(cerId, force) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (err) {
     swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message });
+  } finally {
+    busy = false;
   }
 }
 
@@ -298,6 +308,8 @@ function saveBase64Pdf(b64, fileName) {
 /* ============================ อีเมล ============================ */
 
 function doMail(info) {
+  if (busy) return;
+  busy = true;
   swal.fire({
     icon: 'info',
     title: 'ส่งเกียรติบัตรทางอีเมล',
@@ -331,7 +343,7 @@ function doMail(info) {
     } catch (err) {
       swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message });
     }
-  });
+  }).finally(() => { busy = false; });
 }
 
 /* ============================ เริ่มต้น ============================ */

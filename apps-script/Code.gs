@@ -235,32 +235,102 @@ function sendCertificate(cerId, emailInput) {
  *  2) ค้นหาไฟล์เดิมในโฟลเดอร์ Drive (ทุกรูปแบบชื่อไฟล์)
  * force = true -> ลบไฟล์เดิมแล้วสร้างใหม่
  * คืนค่า { file, cached }
+ *
+ * ใช้ LockService ล็อกทั้งกระบวนการ => คำขอซ้ำ/กดหลายครั้งพร้อมกัน
+ * คำขอที่สองจะรอ แล้วเจอไฟล์จาก cache แทนการสร้างไฟล์ใหม่
  */
 function getPdf_(rec, force) {
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    locked = lock.tryLock(30000);
+    if (!locked) throw new Error('ระบบกำลังสร้างเกียรติบัตรรายการอื่นอยู่ กรุณาลองใหม่อีกครั้ง');
+    return getPdfOnce_(rec, force);
+  } finally {
+    if (locked) { try { lock.releaseLock(); } catch (ignore) {} }
+  }
+}
+
+function getPdfOnce_(rec, force) {
   const folder = DriveApp.getFolderById(CFG.FOLDER_ID);
   const props = PropertiesService.getScriptProperties();
-  const propKey = propKey_(rec);
+  const key = propKey_(rec);
 
-  if (!force) {
-    const byProp = getFileOrNull_(props.getProperty(propKey));
-    if (byProp) return { file: byProp, cached: true };
+  // ตรวจ cache ซ้ำอีกครั้งหลังได้ล็อก (กันคำขอแรกสร้างไฟล์เสร็จไปก่อนหน้า)
+  const cached = getFileOrNull_(props.getProperty(key));
+  if (cached) {
+    if (!force) return { file: cached, cached: true };
+    props.deleteProperty(key);
+    try { cached.setTrashed(true); } catch (ignore) {}
+  }
 
-    const existed = findExistingPdf_(folder, rec);
-    if (existed) {
-      props.setProperty(propKey, existed.getId());
-      return { file: existed, cached: true };
-    }
+  if (force) {
+    props.deleteProperty(key);
+    findPdfs_(folder, rec).forEach(function (f) {
+      try { f.setTrashed(true); } catch (ignore) {}
+    });
   } else {
-    const old = getFileOrNull_(props.getProperty(propKey)) || findExistingPdf_(folder, rec);
-    if (old) {
-      try { old.setTrashed(true); } catch (ignore) {}
-      props.deleteProperty(propKey);
+    const found = findPdfs_(folder, rec)[0];
+    if (found) {
+      props.setProperty(key, found.getId());
+      return { file: found, cached: true };
     }
   }
 
   const file = buildPdf_(rec, folder, pdfName_(rec));
-  props.setProperty(propKey, file.getId());
+  props.setProperty(key, file.getId());
+  if (force) removeOtherPdfs_(folder, rec, file.getId());
   return { file: file, cached: false };
+}
+
+/** ลบไฟล์เกียรติบัตรซ้ำของรหัสเดียวกันที่ค้างในโฟลเดอร์ (เก็บบันทึกไฟล์ล่าสุด) */
+function dedupeCertificates() {
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    locked = lock.tryLock(30000);
+    if (!locked) return { ok: false, message: 'ระบบกำลังประมวลผลอยู่ กรุณาลองใหม่' };
+
+    const folder = DriveApp.getFolderById(CFG.FOLDER_ID);
+    const props = PropertiesService.getScriptProperties();
+    const groups = {};
+    let scanned = 0;
+
+    const files = folder.getFiles();
+    let guard = 0;
+    while (files.hasNext() && guard++ < 10000) {
+      const file = files.next();
+      if (file.getMimeType() !== 'application/pdf') continue;
+      scanned++;
+      const key = keyFromName_(file.getName());
+      if (!key) continue;
+      (groups[key] = groups[key] || []).push(file);
+    }
+
+    const removed = [];
+    Object.keys(groups).forEach(function (key) {
+      const list = groups[key].sort(function (a, b) {
+        return b.getLastUpdated().getTime() - a.getLastUpdated().getTime();
+      });
+      props.setProperty('cert_' + key, list[0].getId());
+      list.slice(1).forEach(function (f) {
+        removed.push(f.getName());
+        try { f.setTrashed(true); } catch (ignore) {}
+      });
+    });
+
+    return {
+      ok: true,
+      scanned: scanned,
+      keys: Object.keys(groups).length,
+      removed: removed.length,
+      files: removed
+    };
+  } catch (err) {
+    return { ok: false, message: err.message };
+  } finally {
+    if (locked) { try { lock.releaseLock(); } catch (ignore) {} }
+  }
 }
 
 function getFileOrNull_(fileId) {
@@ -277,24 +347,46 @@ function propKey_(rec) {
   return 'cert_' + normName_(rec[CFG.KEY_FIELD]);
 }
 
-/** ค้นหาไฟล์เกียรติบัตรเดิมในโฟลเดอร์ (รองรับทุกรูปแบบชื่อไฟล์) */
-function findExistingPdf_(folder, rec) {
+/** ดึงไฟล์เกียรติบัตรทั้งหมดของรหัสนี้ในโฟลเดอร์ (เรียงจากไฟล์ล่าสุด) */
+function findPdfs_(folder, rec) {
   const key = rec[CFG.KEY_FIELD];
-  if (!key) return null;
+  if (!key) return [];
+  const out = [];
+  const seen = {};
 
-  // 1) ชื่อไฟล์มาตรฐานของระบบ
   const exact = folder.getFilesByName(pdfName_(rec));
-  if (exact.hasNext()) return exact.next();
+  while (exact.hasNext()) {
+    const f = exact.next();
+    if (!seen[f.getId()]) { seen[f.getId()] = true; out.push(f); }
+  }
 
-  // 2) ไล่ดูไฟล์ PDF ในโฟลเดอร์ แล้วเทียบรหัสในชื่อไฟล์
   const files = folder.getFiles();
   let guard = 0;
-  while (files.hasNext() && guard++ < 5000) {
-    const file = files.next();
-    if (file.getMimeType() !== 'application/pdf') continue;
-    if (nameHasKey_(file.getName(), key)) return file;
+  while (files.hasNext() && guard++ < 10000) {
+    const f = files.next();
+    if (seen[f.getId()]) continue;
+    if (f.getMimeType() !== 'application/pdf') continue;
+    if (!nameHasKey_(f.getName(), key)) continue;
+    seen[f.getId()] = true;
+    out.push(f);
   }
-  return null;
+
+  return out.sort(function (a, b) {
+    return b.getLastUpdated().getTime() - a.getLastUpdated().getTime();
+  });
+}
+
+function removeOtherPdfs_(folder, rec, keepId) {
+  findPdfs_(folder, rec).forEach(function (f) {
+    if (f.getId() === keepId) return;
+    try { f.setTrashed(true); } catch (ignore) {}
+  });
+}
+
+/** ดึงรหัส (เฉพาะตัวเลข) จากชื่อไฟล์ เช่น "2569_1920 - นาย.." -> "25691920" */
+function keyFromName_(name) {
+  const m = String(name).match(/[0-9]{4}[^0-9]{0,2}[0-9]{3,4}/);
+  return m ? m[0].replace(/\D/g, '') : '';
 }
 
 /** ตรวจว่าชื่อไฟล์มีรหัสนี้อยู่ (รองรับทั้ง 2569/1919 และ 2569_1919 - ...) */
