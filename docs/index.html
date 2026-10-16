@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ระบบค้นหารายชื่อผู้ผ่านการอบรม เพื่อดาวน์โหลดเกียรติบัตร (PDF) หรือส่งทางอีเมล">
+  <title>ค้นหาเกียรติบัตรการอบรม | สำนักงานศึกษาธิการจังหวัดนราธิวาส</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="badge">ปีงบประมาณ พ.ศ. 2569</div>
+    <h1>โครงการพัฒนารูปแบบการจัดการศึกษาเพื่อการมีอาชีพในพื้นที่กลุ่มจังหวัดภาคใต้ชายแดน</h1>
+    <p class="activity">กิจกรรมพัฒนาการออกแบบหลักสูตรสถานศึกษาที่ส่งเสริมสมรรถนะอาชีพของผู้เรียน<br>โดยบูรณาการกับหลักสูตรอาชีวศึกษา ปีงบประมาณ พ.ศ. 2569</p>
+    <div class="meta">
+      <span>&#128205; ณ ห้องประชุมผกากรอง วิทยาลัยชุมชนนราธิวาส จังหวัดนราธิวาส</span>
+      <span>&#128197; ระหว่างวันที่ 6 - 7 ตุลาคม 2569</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="search-card">
+      <h2>ค้นหารายชื่อผู้ผ่านการอบรม</h2>
+      <p class="sub">ค้นหาเพื่อดาวน์โหลดเกียรติบัตร (PDF) หรือส่งเกียรติบัตรทางอีเมล</p>
+      <form id="searchForm">
+        <input type="text" id="q" placeholder="พิมพ์ชื่อ-สกุล หรือรหัสผู้ผ่านการอบรม..." autocomplete="off">
+        <button type="submit" class="btn-search" id="btnSearch">ค้นหา</button>
+      </form>
+      <p class="hint">รองรับชื่อ-สกุล / รหัส / ตำแหน่ง / สถานศึกษา / สังกัด &nbsp;•&nbsp; <span class="stats" id="stats">กำลังเชื่อมต่อระบบ...</span></p>
+    </section>
+
+    <section id="results"></section>
+  </main>
+
+  <footer>
+    <b>จัดโดยสำนักงานศึกษาธิการจังหวัดนราธิวาส สำนักงานปลัดกระทรวงศึกษาธิการ</b><br>
+    ห้องประชุมผกากรอง วิทยาลัยชุมชนนราธิวาส อำเภอเมืองนราธิวาส จังหวัดนราธิวาส | วันที่ 6 - 7 ตุลาคม 2569
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
